@@ -9,8 +9,8 @@ from datetime import datetime
 import random
 
 # ========== CONFIGURATION ==========
-BOT_TOKEN = "8756569061:AAERAjWFm82B5l3LYNTFEYAJqWfNwQy22os"  # Leave space for your bot token
-ADMIN_CHAT_ID = "6070145287"  # Leave space for admin chat ID
+BOT_TOKEN = "8928688238:AAHU5dSESP7I8zdTrRFwBBdTcGdcZf-hPmY"  # Leave space for your bot token
+ADMIN_CHAT_ID = "8105949422"  # Leave space for admin chat ID
 
 # Channel links
 TELEGRAM_CHANNEL = "https://t.me/+wRaWDUT9DB41ZWE0"
